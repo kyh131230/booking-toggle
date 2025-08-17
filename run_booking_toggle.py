@@ -12,6 +12,23 @@ NAVER_ID = os.environ.get("NAVER_ID")
 NAVER_PW = os.environ.get("NAVER_PW")
 TARGET_URL = "https://partner.booking.naver.com/bizes/997459/settings/operation"
 
+def read_login_errors(driver):
+    msgs = []
+    for sel in ["#errMsg", ".error_message", ".notice_error", "[role='alert']", ".error", ".msg_error"]:
+        try:
+            el = driver.find_element(By.CSS_SELECTOR, sel)
+            if el.is_displayed():
+                txt = (el.text or "").strip()
+                if txt:
+                    msgs.append(txt)
+        except:
+            pass
+    return msgs
+
+def logged_in(driver):
+    # 성공하면 nid를 벗어나거나, 보호된 페이지 접근 가능
+    return "nid.naver.com" not in (driver.current_url or "")
+
 def is_masked_or_empty(val: str) -> bool:
     if val is None:
         return True
@@ -153,19 +170,41 @@ def main():
             typed_pw = pw_input.get_attribute("value") or ""
             print("PW 길이 확인(보정 후):", len(typed_pw))
 
+        # 로그인 버튼 클릭
         driver.execute_script("arguments[0].click();", driver.find_element(By.ID, "log.login"))
-        
-        place = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//strong[normalize-space()='남양주시 청년창업센터']")
-        ))
-        driver.execute_script("arguments[0].click();", place)
-        
-        # (있으면) 팝업 닫기
-        close_popup_if_exists(driver, wait)
+        time.sleep(1)
 
-        # 9) 운영 설정으로 직행
+        # 새 창 전환 시도(있으면 마지막 창으로)
+        try:
+            if len(driver.window_handles) >= 2:
+                driver.switch_to.window(driver.window_handles[-1])
+        except:
+            pass
+
+        # 최대 15초 동안 로그인 성공 판정
+        limit = time.time() + 15
+        while time.time() < limit and not logged_in(driver):
+            time.sleep(0.5)
+
+        if not logged_in(driver):
+            errs = read_login_errors(driver)
+            print("❗ 로그인 실패 / 현재 URL:", driver.current_url)
+            if errs:
+                print("   서버 메시지:", " | ".join(errs))
+            driver.save_screenshot("error.png")
+            raise SystemExit("로그인 세션 성립 실패(원격 러너 보안 차단 가능성).")
+
+        print("✅ 로그인 성공(또는 세션 확보), 현재 URL:", driver.current_url)
+
+        # 곧장 목표 URL로 진입
         driver.get(TARGET_URL)
-        wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        print("➡ 페이지:", driver.current_url)
+
+        # 리다이렉트로 nid로 튕기면 세션 없음 → 중단
+        if "nid.naver.com" in (driver.current_url or ""):
+            driver.save_screenshot("error.png")
+            raise SystemExit("목표 페이지 접근 거부(세션 없음). GitHub-hosted runner에서 보안 차단 가능성 높음.")
         print("✅ 운영 설정 진입:", driver.current_url)
 
         # 10) 토글 상태 → 목표 상태로 보정
