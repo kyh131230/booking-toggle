@@ -12,6 +12,27 @@ NAVER_ID = os.environ.get("NAVER_ID")
 NAVER_PW = os.environ.get("NAVER_PW")
 TARGET_URL = "https://partner.booking.naver.com/bizes/997459/settings/operation"
 
+def is_masked_or_empty(val: str) -> bool:
+    if val is None:
+        return True
+    val = val.strip()
+    if val == "":
+        return True
+    # 전부 * 이거나 • 같은 마스킹 문자만 있는 경우
+    mask_chars = set("*•●··•")
+    return all(ch in mask_chars for ch in val)
+
+def fix_with_native_setter(driver, elem, value):
+    # HTMLInputElement.value의 네이티브 setter를 이용해 실제 value 주입 + 이벤트 발생
+    driver.execute_script("""
+        const el = arguments[0], val = arguments[1];
+        const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        desc.set.call(el, val);
+        el.dispatchEvent(new Event('input',  {bubbles:true}));
+        el.dispatchEvent(new Event('change', {bubbles:true}));
+        el.dispatchEvent(new Event('blur',   {bubbles:true}));
+    """, elem, value)
+
 def paste(elem, text):
     elem.click()
     time.sleep(0.1)
@@ -108,13 +129,28 @@ def main():
         # 6) pyperclip 붙여넣기 + 이벤트 보정 + 값 검증
         paste(id_input, "nyj_youthcenter")
         fire_events(driver, id_input)
-        typed_id = (id_input.get_attribute("value") or "").strip()
-        print("ID 입력 확인:", repr(typed_id))
+        typed_id = id_input.get_attribute("value") or ""
+        print("ID 입력 확인(초기):", repr(typed_id))
 
-        paste(pw_input, "skadidwntl4338!")
+        if is_masked_or_empty(typed_id):
+            print("ID가 마스킹/빈값으로 감지 → 네이티브 setter로 보정")
+            fix_with_native_setter(driver, id_input, NAVER_ID)
+            time.sleep(0.1)
+            typed_id = id_input.get_attribute("value") or ""
+            print("ID 입력 확인(보정 후):", repr(typed_id))
+
+
+        paste(pw_input, NAVER_PW)
         fire_events(driver, pw_input)
-        typed_pw_len = len(pw_input.get_attribute("value") or "")
-        print("PW 길이 확인:", typed_pw_len)
+        time.sleep(0.1)
+        typed_pw = pw_input.get_attribute("value") or ""
+        print("PW 길이 확인(초기):", len(typed_pw))
+        if is_masked_or_empty(typed_pw) or len(typed_pw) != len(NAVER_PW):
+            print("PW가 마스킹/길이 불일치 → 네이티브 보정")
+            fix_with_native_setter(driver, pw_input, NAVER_PW)
+            time.sleep(0.1)
+            typed_pw = pw_input.get_attribute("value") or ""
+            print("PW 길이 확인(보정 후):", len(typed_pw))
 
         # 7) 로그인 버튼 활성화(off 제거) 대기 후 클릭
         def login_enabled(d):
