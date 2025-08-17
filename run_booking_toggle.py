@@ -145,6 +145,7 @@ def main():
         time.sleep(0.1)
         typed_pw = pw_input.get_attribute("value") or ""
         print("PW 길이 확인(초기):", len(typed_pw))
+        
         if is_masked_or_empty(typed_pw) or len(typed_pw) != len(NAVER_PW):
             print("PW가 마스킹/길이 불일치 → 네이티브 보정")
             fix_with_native_setter(driver, pw_input, NAVER_PW)
@@ -152,27 +153,7 @@ def main():
             typed_pw = pw_input.get_attribute("value") or ""
             print("PW 길이 확인(보정 후):", len(typed_pw))
 
-        # 7) 로그인 버튼 활성화(off 제거) 대기 후 클릭
-        def login_enabled(d):
-            try:
-                btn = d.find_element(By.ID, "log.login")
-                cls = btn.get_attribute("class") or ""
-                return ("off" not in cls) and btn.is_enabled()
-            except:
-                return False
-
-        wait.until(login_enabled)
         driver.execute_script("arguments[0].click();", driver.find_element(By.ID, "log.login"))
-
-        # 에러 문구가 즉시 뜨는지 확인(자동화/보안 차단 구분용)
-        time.sleep(1)
-        for sel in ["#errMsg", ".error_message", ".notice_error", "[role='alert']", ".error", ".msg_error"]:
-            try:
-                e = driver.find_element(By.CSS_SELECTOR, sel)
-                if e.is_displayed() and e.text.strip():
-                    print("❗로그인 에러 문구:", e.text.strip())
-            except:
-                pass
 
         # 8) 플레이스 선택
         place = wait.until(EC.element_to_be_clickable(
