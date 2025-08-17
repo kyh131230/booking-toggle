@@ -155,13 +155,18 @@ def main():
 
         driver.execute_script("arguments[0].click();", driver.find_element(By.ID, "log.login"))
         
+        place = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//strong[normalize-space()='남양주시 청년창업센터']")
+        ))
+        driver.execute_script("arguments[0].click();", place)
+        
+        # (있으면) 팝업 닫기
+        close_popup_if_exists(driver, wait)
+
         # 9) 운영 설정으로 직행
         driver.get(TARGET_URL)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         print("✅ 운영 설정 진입:", driver.current_url)
-
-        # (있으면) 팝업 닫기
-        close_popup_if_exists(driver, wait)
 
         # 10) 토글 상태 → 목표 상태로 보정
         toggle = wait.until(EC.presence_of_element_located(
